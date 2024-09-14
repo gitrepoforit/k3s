@@ -1,0 +1,63 @@
+---
+- name: Install K3s on Raspberry Pi Cluster
+  hosts: k8s
+  become: true
+  vars_files:
+    - secrets.yml
+
+  tasks:
+    - name: Ensure cgroup kernel parameters are set in cmdline.txt
+      blockinfile:
+        path: /boot/firmware/cmdline.txt
+        block: "cgroup_enable=cpuset cgroup_enable=memory cgroup_memory=1 swapaccount=1"
+        state: present
+        marker: ""  # Ensures no comment markers around the inserted line
+      register: cmdline_updated
+
+    - name: Disable swap
+      shell: |
+        dphys-swapfile swapoff
+        dphys-swapfile uninstall
+        update-rc.d dphys-swapfile remove
+      ignore_errors: yes
+
+    - name: Update package list
+      apt:
+        update_cache: yes
+
+    - name: Install required packages
+      apt:
+        name:
+          - curl
+          - apt-transport-https
+          - software-properties-common
+
+    - name: Download and execute K3s install script
+      shell: |
+        curl -sfL https://get.k3s.io/ -o /tmp/k3s-install.sh
+        INSTALL_K3S_VERSION=v1.31.0+k3s1 sh /tmp/k3s-install.sh
+      args:
+        creates: /usr/local/bin/k3s
+
+    - name: Verify K3s installation
+      command: k3s --version
+      register: k3s_version_check
+
+    - name: Fail if K3s is not installed
+      fail:
+        msg: "K3s installation failed"
+      when: k3s_version_check.rc != 0
+
+    - name: Start K3s service on controlplane nodes
+      service:
+        name: k3s
+        state: started
+        enabled: yes
+      when: inventory_hostname in groups['k8s_controlplane']
+
+    - name: Reboot the system if cmdline.txt was updated
+      reboot:
+        msg: "Rebooting after updating cgroup kernel parameters"
+      when: cmdline_updated.changed
+
+

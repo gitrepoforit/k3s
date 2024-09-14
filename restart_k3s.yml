@@ -1,0 +1,33 @@
+---
+- name: Restart K3s on Kubernetes Cluster
+  hosts: all
+  become: true
+  tasks:
+    - name: Stop K3s service
+      systemd:
+        name: k3s
+        state: stopped
+      ignore_errors: yes
+
+    - name: Kill leftover containerd-shim processes
+      shell: pkill -9 -f containerd-shim || true
+      ignore_errors: yes
+
+    - name: Ensure K3s service is stopped
+      systemd:
+        name: k3s
+        state: stopped
+        enabled: yes
+      ignore_errors: yes
+
+    - name: Start K3s service
+      systemd:
+        name: k3s
+        state: started
+        enabled: yes
+      register: k3s_start
+
+    - name: Fail if K3s service failed to start
+      fail:
+        msg: "K3s service failed to start."
+      when: k3s_start.failed

@@ -1,0 +1,9 @@
+# Ignore the inventory file
+inventory.ini
+
+# Ignore sensitive files
+secrets.yml
+
+# Ignore temporary Ansible files
+*.retry
+*.log
