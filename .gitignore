@@ -1,6 +1,6 @@
 # Ignore the inventory file
 inventory.ini
-
+inventory
 # Ignore sensitive files
 secrets.yml
 
