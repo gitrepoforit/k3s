@@ -1,0 +1,32 @@
+---
+- name: Set up virtual environment and install Ansible
+  hosts: localhost
+  become: true
+  tasks:
+
+    - name: Ensure python3-venv is installed
+      apt:
+        name:
+          - python3-venv
+          - python3-full
+        state: present
+
+    - name: Create virtual environment for Ansible
+      command: python3 -m venv /opt/ansible-venv
+      args:
+        creates: /opt/ansible-venv/bin/activate
+
+    - name: Install Ansible in the virtual environment
+      command: /opt/ansible-venv/bin/pip install ansible
+      args:
+        creates: /opt/ansible-venv/bin/ansible
+
+    - name: Verify Ansible installation
+      command: /opt/ansible-venv/bin/ansible --version
+      register: ansible_version_output
+
+    - name: Display Ansible version
+      debug:
+        msg: "Ansible version installed: {{ ansible_version_output.stdout }}"
+
+

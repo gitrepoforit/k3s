@@ -1,0 +1,40 @@
+---
+- name: Add virtual environment activation to bashrc and fix PATH for user raccoon
+  hosts: localhost
+  become: true
+  tasks:
+
+    - name: Add virtualenv bin directory to PATH in raccoon's .bashrc
+      lineinfile:
+        path: /home/raccoon/.bashrc
+        line: 'export PATH="/opt/k3s_venv/bin:$PATH"'
+        state: present
+        create: yes
+      become_user: raccoon 
+
+    - name: Add script to activate virtual environment in raccoon's .bashrc
+      lineinfile:
+        path: /home/raccoon/.bashrc
+        line: "source /opt/activate_ansible_venv.sh"
+        state: present
+        create: yes
+      become_user: raccoon 
+
+    - name: Create shell script to activate virtual environment
+      copy:
+        dest: /opt/activate_ansible_venv.sh
+        content: |
+          #!/bin/bash
+          source /opt/k3s_venv/bin/activate
+      become_user: raccoon
+
+    - name: Ensure the script is executable
+      file:
+        path: /opt/activate_ansible_venv.sh
+        mode: '0755'
+        owner: raccoon
+        group: raccoon
+
+    - name: Display success message
+      debug:
+        msg: "Virtual environment PATH has been added to raccoon's .bashrc and will be prioritized on login."

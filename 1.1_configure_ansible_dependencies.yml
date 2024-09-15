@@ -1,0 +1,74 @@
+---
+- name: Ensure pip3, virtualenv, and required Python packages are installed
+  hosts: localhost
+  become: true
+  tasks:
+
+    - name: Update apt cache
+      apt:
+        update_cache: yes
+
+    - name: Install required system packages
+      apt:
+        name:
+          - python3-pip
+          - python3-venv
+          - python3-full
+        state: present
+
+    - name: Create virtual environment directory if not present
+      file:
+        path: /opt/k3s_venv
+        state: directory
+        owner: "{{ ansible_user_id }}"
+        group: "{{ ansible_user_gid }}"
+        mode: '0755'
+
+    - name: Create virtual environment for Python
+      command: python3 -m venv /opt/k3s_venv
+      args:
+        creates: /opt/k3s_venv/bin/activate 
+
+    - name: Install required Python packages using requirements.txt in virtual environment
+      pip:
+        requirements: "{{ playbook_dir }}/requirements.txt"
+        virtualenv: /opt/k3s_venv
+      become: true 
+
+    - name: Configure pip to use Ansible Galaxy index in virtual environment
+      ansible.builtin.command:
+        cmd: /opt/k3s_venv/bin/pip config set global.index-url https://galaxy.ansible.com/api/automation-hub/v3/collections/
+
+    - name: Remove Ansible collection cache directory (if it exists)
+      ansible.builtin.file:
+        path: ~/.ansible/collections
+        state: absent
+
+    - name: Install community.kubernetes Ansible collection in virtual environment (allow pre-releases)
+      ansible.builtin.pip: 
+        name: community.kubernetes
+        virtualenv: /opt/k3s_venv
+        extra_args: --pre 
+
+    - name: Verify pip3 installation in virtual environment
+      command: /opt/k3s_venv/bin/pip --version
+      register: pip_version
+      ignore_errors: yes
+
+    - name: Display pip3 version in virtual environment
+      debug:
+        msg: "pip3 version (virtualenv): {{ pip_version.stdout }}"
+
+    - name: Verify kubernetes Python package installation in virtual environment
+      command: /opt/k3s_venv/bin/pip show kubernetes
+      register: kubernetes_installed
+      ignore_errors: yes
+
+    - name: Display success message if kubernetes package is installed
+      debug:
+        msg: "Kubernetes Python package installed successfully in virtualenv: {{ kubernetes_installed.stdout }}"
+      when: kubernetes_installed is not failed
+
+    - name: Set environment variable for activating virtualenv
+      set_fact:
+        venv_path: "/opt/k3s_venv"

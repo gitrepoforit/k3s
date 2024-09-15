@@ -1,0 +1,5 @@
+openshift
+PyYAML >= 3.11  # Ensure PyYAML version is at least 3.11
+kubernetes >= 24.2.0  # Ensure kubernetes version is at least 24.2.0
+jsonpatch
+ansible
