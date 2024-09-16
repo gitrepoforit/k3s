@@ -49,18 +49,18 @@
         path: ~/.ansible/collections
         state: absent
 
-    - name: Install kubernetes.core Ansible collection (using ansible-galaxy)
+    - name: Install kubernetes.core Ansible collection in virtual environment
       ansible.builtin.command:
         cmd: /opt/k3s_venv/bin/ansible-galaxy collection install kubernetes.core
 
-    - name: Ensure user collection directory has priority in ansible.cfg
-      ansible.builtin.blockinfile:
+    - name: Ensure COLLECTIONS_PATHS is set in ansible.cfg
+      lineinfile:
         path: /etc/ansible/ansible.cfg
-        block: |
-          [defaults]
-          COLLECTIONS_PATHS = ["/home/raccoon/.ansible/collections", "/usr/share/ansible/collections"]
+        regexp: '^COLLECTIONS_PATHS'
+        line: 'COLLECTIONS_PATHS = /home/raccoon/.ansible/collections:/usr/share/ansible/collections'
+        insertafter: '^#.*\[defaults\]'  # Insert after the commented-out defaults or a matching line
+        state: present
       become: true
-      become_user: root
 
     - name: Verify pip3 installation in virtual environment
       command: /opt/k3s_venv/bin/pip --version
@@ -79,7 +79,6 @@
     - name: Display success message if kubernetes package is installed
       debug:
         msg: "Kubernetes Python package installed successfully in virtualenv: {{ kubernetes_installed.stdout }}"
-      when: kubernetes_installed is not failed
 
     - name: Set environment variable for activating virtualenv
       set_fact:
