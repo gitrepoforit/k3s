@@ -1,12 +1,18 @@
 ---
 - name: Ensure pip3, virtualenv, and required Python packages are installed
   hosts: localhost
-  become: true
   tasks:
+
+    - name: Activate virtual environment (using environment keyword)
+      ansible.builtin.shell:
+        cmd: echo "Virtual Environment Activated"
+      environment:
+        PATH: "/opt/k3s_venv/bin:{{ ansible_env.PATH }}"
 
     - name: Update apt cache
       apt:
         update_cache: yes
+      become: true
 
     - name: Install required system packages
       apt:
@@ -15,25 +21,24 @@
           - python3-venv
           - python3-full
         state: present
+      become: true
 
     - name: Create virtual environment directory if not present
       file:
         path: /opt/k3s_venv
         state: directory
-        owner: "{{ ansible_user_id }}"
-        group: "{{ ansible_user_gid }}"
         mode: '0755'
+      become: true
 
     - name: Create virtual environment for Python
       command: python3 -m venv /opt/k3s_venv
       args:
-        creates: /opt/k3s_venv/bin/activate 
+        creates: /opt/k3s_venv/bin/activate
 
     - name: Install required Python packages using requirements.txt in virtual environment
       pip:
         requirements: "{{ playbook_dir }}/requirements.txt"
         virtualenv: /opt/k3s_venv
-      become: true 
 
     - name: Configure pip to use Ansible Galaxy index in virtual environment
       ansible.builtin.command:
@@ -44,11 +49,18 @@
         path: ~/.ansible/collections
         state: absent
 
-    - name: Install community.kubernetes Ansible collection in virtual environment (allow pre-releases)
-      ansible.builtin.pip: 
-        name: community.kubernetes
-        virtualenv: /opt/k3s_venv
-        extra_args: --pre 
+    - name: Install kubernetes.core Ansible collection (using ansible-galaxy)
+      ansible.builtin.command:
+        cmd: /opt/k3s_venv/bin/ansible-galaxy collection install kubernetes.core
+
+    - name: Ensure user collection directory has priority in ansible.cfg
+      ansible.builtin.blockinfile:
+        path: /etc/ansible/ansible.cfg
+        block: |
+          [defaults]
+          COLLECTIONS_PATHS = ["/home/raccoon/.ansible/collections", "/usr/share/ansible/collections"]
+      become: true
+      become_user: root
 
     - name: Verify pip3 installation in virtual environment
       command: /opt/k3s_venv/bin/pip --version
