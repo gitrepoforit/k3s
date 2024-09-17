@@ -53,13 +53,12 @@
       ansible.builtin.command:
         cmd: /opt/k3s_venv/bin/ansible-galaxy collection install kubernetes.core
 
-    - name: Ensure COLLECTIONS_PATHS is set in ansible.cfg
+    - name: Ensure collections_path is set in ansible.cfg
       lineinfile:
         path: /etc/ansible/ansible.cfg
-        regexp: '^COLLECTIONS_PATHS'
-        line: 'COLLECTIONS_PATHS = /home/raccoon/.ansible/collections:/usr/share/ansible/collections'
-        insertafter: '^#.*\[defaults\]'  # Insert after the commented-out defaults or a matching line
-        state: present
+        regexp: '^collections_path'
+        line: 'collections_path = /home/raccoon/.ansible/collections:/usr/share/ansible/collections'
+        insertafter: '[defaults]'
       become: true
 
     - name: Verify pip3 installation in virtual environment
