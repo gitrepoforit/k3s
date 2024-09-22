@@ -49,9 +49,9 @@
         path: ~/.ansible/collections
         state: absent
 
-    - name: Install kubernetes.core Ansible collection in virtual environment
+    - name: Force install kubernetes.core Ansible collection in virtual environment
       ansible.builtin.command:
-        cmd: /opt/k3s_venv/bin/ansible-galaxy collection install kubernetes.core
+        cmd: /opt/k3s_venv/bin/ansible-galaxy collection install kubernetes.core --force
 
     - name: Ensure collections_path is set in ansible.cfg
       lineinfile:
