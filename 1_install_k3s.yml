@@ -6,10 +6,10 @@
     - secrets.yml
 
   tasks:
-    - name: Ensure cgroup kernel parameters are set in cmdline.txt
+    - name: Ensure cgroup v2 kernel parameters are set in cmdline.txt
       blockinfile:
         path: /boot/firmware/cmdline.txt
-        block: "cgroup_enable=cpuset cgroup_enable=memory cgroup_memory=1 swapaccount=1"
+        block: "cgroup_enable=cpuset cgroup_enable=memory cgroup_memory=1 swapaccount=1 systemd.unified_cgroup_hierarchy=1 cgroup_enable=memory"
         state: present
         marker: ""  # Ensures no comment markers around the inserted line
       register: cmdline_updated
@@ -59,5 +59,3 @@
       reboot:
         msg: "Rebooting after updating cgroup kernel parameters"
       when: cmdline_updated.changed
-
-
