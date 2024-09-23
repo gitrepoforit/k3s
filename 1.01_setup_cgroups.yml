@@ -25,6 +25,13 @@
         msg: "{{ cgroup_kernel_config.stdout }}"
       when: kernel_config_file.stat.exists
 
+    - name: Clean up cmdline.txt (remove duplicate entries)
+      replace:
+        path: /boot/firmware/cmdline.txt
+        regexp: '^(.*)(cgroup_enable=[^ ]+ ){2,}(.*)$'
+        replace: '\1\2\3'
+        backup: no
+
     - name: Ensure all kernel parameters are on the same line in cmdline.txt
       lineinfile:
         path: /boot/firmware/cmdline.txt
@@ -41,38 +48,32 @@
       debug:
         msg: "{{ cgroup_controllers.stdout }}"
 
-    - name: Check current firmware revision
-      stat:
-        path: /boot/firmware/.firmware_revision
-      register: firmware_revision_file
+    - name: Check current firmware revision on all nodes
+      shell: vcgencmd bootloader_version
+      register: firmware_version
 
-    - name: Read firmware revision
-      slurp:
-        src: /boot/firmware/.firmware_revision
-      when: firmware_revision_file.stat.exists
-      register: current_firmware_revision
-
-    - name: Check if firmware is up to date
+    - name: Set fact to indicate firmware update is needed
       set_fact:
-        is_firmware_up_to_date: "{{ current_firmware_revision.content | b64decode | trim == 'd399c939a23b0c9ad6bc979a479e413de73a1342' }}"
-      when: firmware_revision_file.stat.exists
+        firmware_update_needed: true
+      when: firmware_version.stdout | trim != 'timestamp 1725562327'
 
-    - name: Notify that firmware is already up to date
+    - name: Notify if firmware is already up to date
       debug:
         msg: "Firmware is already up to date."
-      when: is_firmware_up_to_date
+      when: not firmware_update_needed
 
     - name: Upgrade the Raspberry Pi kernel to the latest version if not up to date
       shell: |
         yes | sudo rpi-update
       register: kernel_updated
-      when: not is_firmware_up_to_date
-      async: 6000    # Setting a 100-minute timeout
-      poll: 300      # Polling every 5 minutes to check for completion
+      when: firmware_update_needed
+      async: 6000      # Setting a 100-minute timeout
+      poll: 300        # Polling every 5 minutes to check for completion
 
     - name: Notify about kernel upgrade completion
       debug:
         msg: "Kernel upgrade completed."
+      when: kernel_updated.changed
 
     - name: Reboot the system if necessary
       reboot:
