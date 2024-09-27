@@ -2,8 +2,6 @@
 - name: Install K3s on Raspberry Pi Cluster
   hosts: k8s
   become: true
-  vars_files:
-    - secrets.yml
 
   tasks:
     - name: Ensure correct cgroup v2 kernel parameters are set in cmdline.txt
