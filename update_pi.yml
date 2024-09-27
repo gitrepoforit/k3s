@@ -1,6 +1,6 @@
 ---
 - name: Update all packages on Raspberry Pi nodes
-  hosts: controlplane1 
+  hosts: all
   become: yes
 
   tasks:
