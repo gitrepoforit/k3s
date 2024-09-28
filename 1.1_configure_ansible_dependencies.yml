@@ -52,6 +52,19 @@
       ansible.builtin.command:
         cmd: ~/k3s_venv/bin/ansible-galaxy collection install kubernetes.core --force
 
+    - name: Backup existing ansible.cfg if it exists
+      copy:
+        src: /etc/ansible/ansible.cfg
+        dest: /etc/ansible/ansible.cfg.bak
+        remote_src: yes 
+      become: true
+      when: file('/etc/ansible/ansible.cfg').stat.exists 
+
+    - name: Clear the contents of ansible.cfg
+      ansible.builtin.shell:
+        cmd: "echo -n '' > /etc/ansible/ansible.cfg" 
+      become: true
+
     - name: Create Ansible configuration directory if it doesn't exist
       file:
         path: /etc/ansible

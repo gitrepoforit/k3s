@@ -1,8 +1,7 @@
 ---
 - name: Add virtual environment activation to bashrc and fix PATH for user raccoon
   hosts: localhost
-  become: true
-  tasks:
+  tasks: # Removed 'become: true'
 
     - name: Add virtualenv bin directory to PATH in raccoon's .bashrc
       lineinfile:
