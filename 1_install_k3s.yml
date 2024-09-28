@@ -46,14 +46,9 @@
         msg: "K3s installation failed"
       when: k3s_version_check.rc != 0
 
-    - name: Notify to reboot
-      debug:
-        msg: "Reboot is required after updating cgroup kernel parameters and disabling swap. Please reboot controlplane1 manually."
-      when: inventory_hostname == 'controlplane1'
-
     - name: Reboot the system if necessary (excluding controlplane1)
       reboot:
-        msg: "Rebooting after updating cgroup kernel parameters and disabling swap"
+        msg: "Rebooting after disabling swap"
       when: bootloader_updated.changed and inventory_hostname != 'controlplane1'
 
     - name: Start K3s service on controlplane nodes
