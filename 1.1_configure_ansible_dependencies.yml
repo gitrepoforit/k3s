@@ -7,7 +7,7 @@
       ansible.builtin.shell:
         cmd: echo "Virtual Environment Activated"
       environment:
-        PATH: "/opt/k3s_venv/bin:{{ ansible_env.PATH }}"
+        PATH: "~/k3s_venv/bin:{{ ansible_env.PATH }}"
 
     - name: Update apt cache
       apt:
@@ -25,24 +25,23 @@
 
     - name: Create virtual environment directory if not present
       file:
-        path: /opt/k3s_venv
+        path: ~/k3s_venv
         state: directory
         mode: '0755'
-      become: true
 
     - name: Create virtual environment for Python
-      command: python3 -m venv /opt/k3s_venv
+      command: python3 -m venv ~/k3s_venv
       args:
-        creates: /opt/k3s_venv/bin/activate
+        creates: ~/k3s_venv/bin/activate
 
     - name: Install required Python packages using requirements.txt in virtual environment
       pip:
         requirements: "{{ playbook_dir }}/requirements.txt"
-        virtualenv: /opt/k3s_venv
+        virtualenv: ~/k3s_venv
 
     - name: Configure pip to use Ansible Galaxy index in virtual environment
       ansible.builtin.command:
-        cmd: /opt/k3s_venv/bin/pip config set global.index-url https://galaxy.ansible.com/api/automation-hub/v3/collections/
+        cmd: ~/k3s_venv/bin/pip config set global.index-url https://galaxy.ansible.com/api/automation-hub/v3/collections/
 
     - name: Remove Ansible collection cache directory (if it exists)
       ansible.builtin.file:
@@ -51,7 +50,14 @@
 
     - name: Force install kubernetes.core Ansible collection in virtual environment
       ansible.builtin.command:
-        cmd: /opt/k3s_venv/bin/ansible-galaxy collection install kubernetes.core --force
+        cmd: ~/k3s_venv/bin/ansible-galaxy collection install kubernetes.core --force
+
+    - name: Create Ansible configuration directory if it doesn't exist
+      file:
+        path: /etc/ansible
+        state: directory
+        mode: '0755'
+      become: true
 
     - name: Ensure collections_path is set in ansible.cfg
       lineinfile:
@@ -59,10 +65,11 @@
         regexp: '^collections_path'
         line: 'collections_path = /home/raccoon/.ansible/collections:/usr/share/ansible/collections'
         insertafter: '[defaults]'
+        create: yes
       become: true
 
     - name: Verify pip3 installation in virtual environment
-      command: /opt/k3s_venv/bin/pip --version
+      command: ~/k3s_venv/bin/pip --version
       register: pip_version
       ignore_errors: yes
 
@@ -71,7 +78,7 @@
         msg: "pip3 version (virtualenv): {{ pip_version.stdout }}"
 
     - name: Verify kubernetes Python package installation in virtual environment
-      command: /opt/k3s_venv/bin/pip show kubernetes
+      command: ~/k3s_venv/bin/pip show kubernetes
       register: kubernetes_installed
       ignore_errors: yes
 
@@ -81,4 +88,4 @@
 
     - name: Set environment variable for activating virtualenv
       set_fact:
-        venv_path: "/opt/k3s_venv"
+        venv_path: "~/k3s_venv"

@@ -7,7 +7,7 @@
     - name: Add virtualenv bin directory to PATH in raccoon's .bashrc
       lineinfile:
         path: /home/raccoon/.bashrc
-        line: 'export PATH="/opt/k3s_venv/bin:$PATH"'
+        line: 'export PATH="~/k3s_venv/bin:$PATH"'
         state: present
         create: yes
       become_user: raccoon 
@@ -15,22 +15,22 @@
     - name: Add script to activate virtual environment in raccoon's .bashrc
       lineinfile:
         path: /home/raccoon/.bashrc
-        line: "source /opt/activate_ansible_venv.sh"
+        line: "source ~/activate_ansible_venv.sh"
         state: present
         create: yes
       become_user: raccoon 
 
     - name: Create shell script to activate virtual environment
       copy:
-        dest: /opt/activate_ansible_venv.sh
+        dest: ~/activate_ansible_venv.sh
         content: |
           #!/bin/bash
-          source /opt/k3s_venv/bin/activate
+          source ~/k3s_venv/bin/activate
       become_user: raccoon
 
     - name: Ensure the script is executable
       file:
-        path: /opt/activate_ansible_venv.sh
+        path: ~/activate_ansible_venv.sh
         mode: '0755'
         owner: raccoon
         group: raccoon
