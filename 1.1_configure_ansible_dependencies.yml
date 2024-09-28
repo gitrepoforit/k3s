@@ -60,11 +60,11 @@
       become: true
 
     - name: Ensure collections_path is set in ansible.cfg
-      lineinfile:
+      blockinfile: 
         path: /etc/ansible/ansible.cfg
-        regexp: '^collections_path'
-        line: 'collections_path = /home/raccoon/.ansible/collections:/usr/share/ansible/collections'
-        insertafter: '[defaults]'
+        block: |
+          [defaults]
+          collections_path = /home/raccoon/.ansible/collections:/usr/share/ansible/collections
         create: yes
       become: true
 
