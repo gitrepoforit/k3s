@@ -25,12 +25,20 @@
         msg: "{{ cgroup_kernel_config.stdout }}"
       when: kernel_config_file.stat.exists
 
-    - name: Remove any existing cgroup or systemd-related kernel parameters in cmdline.txt
+    - name: Manually back up cmdline.txt to /tmp/cmdline.txt.backup
+      copy:
+        src: /boot/firmware/cmdline.txt
+        dest: /tmp/cmdline.txt.backup
+        remote_src: yes
+      tags: cgroup_setup
+
+    - name: Remove any existing line that starts with console or root-related kernel parameters
       replace:
         path: /boot/firmware/cmdline.txt
-        regexp: 'cgroup_enable=[^ ]+|systemd.unified_cgroup_hierarchy=[^ ]+|cgroup_memory=1'
+        regexp: '^console=serial0,115200.*$'
         replace: ''
-        backup: yes
+        backup: no
+      tags: cgroup_setup
 
     - name: Ensure all kernel parameters are on a single line in cmdline.txt
       lineinfile:
@@ -39,6 +47,14 @@
         state: present
         create: yes
         backrefs: no
+      tags: cgroup_setup
+
+    - name: Remove any blank lines in cmdline.txt
+      lineinfile:
+        path: /boot/firmware/cmdline.txt
+        regexp: '^\s*$'
+        state: absent
+      tags: cgroup_setup
 
     - name: Check if cgroup memory controller is enabled
       shell: cat /sys/fs/cgroup/cgroup.controllers

@@ -1,0 +1,15 @@
+---
+- name: Output /boot/firmware/cmdline.txt Contents on All Hosts
+  hosts: all 
+  become: yes  # Required to read /boot/firmware/cmdline.txt
+  gather_facts: no
+
+  tasks:
+    - name: Read and Display /boot/firmware/cmdline.txt Contents
+      ansible.builtin.slurp:
+        src: /boot/firmware/cmdline.txt 
+      register: file_contents
+
+    - name: Print cmdline.txt Contents
+      debug:
+        msg: "Contents of /boot/firmware/cmdline.txt on {{ inventory_hostname }}: {{ file_contents.content }}"
