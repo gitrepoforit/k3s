@@ -1,7 +1,7 @@
 ---
 - name: Output /boot/firmware/cmdline.txt Contents on All Hosts
   hosts: all 
-  become: yes  # Required to read /boot/firmware/cmdline.txt
+  become: yes
   gather_facts: no
 
   tasks:
@@ -10,6 +10,10 @@
         src: /boot/firmware/cmdline.txt 
       register: file_contents
 
+    - name: Decode the content
+      set_fact:
+        decoded_content: "{{ file_contents.content | b64decode }}"
+
     - name: Print cmdline.txt Contents
       debug:
-        msg: "Contents of /boot/firmware/cmdline.txt on {{ inventory_hostname }}: {{ file_contents.content }}"
+        msg: "Contents of /boot/firmware/cmdline.txt on {{ inventory_hostname }}: {{ decoded_content }}"
