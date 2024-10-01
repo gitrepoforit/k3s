@@ -1,0 +1,91 @@
+---
+- name: Join Control Plane and Worker Nodes to K3s Cluster
+  hosts: k8s_controlplane, k8s_worker
+  become: true
+  gather_facts: false
+
+  tasks:
+    - name: Install iptables and iptables-persistent (for control plane nodes)
+      when: "'k8s_controlplane' in group_names"
+      apt:
+        name:
+          - iptables
+          - iptables-persistent  # Ensure rules persist across reboots
+        state: present
+      become: true
+
+    - name: Ensure /etc/iptables directory exists
+      when: "'k8s_controlplane' in group_names"
+      file:
+        path: /etc/iptables
+        state: directory
+        mode: '0755'
+      become: true
+
+    - name: Allow established connections
+      when: "'k8s_controlplane' in group_names"
+      shell: iptables -A INPUT -m conntrack --ctstate ESTABLISHED,RELATED -j ACCEPT
+      become: true
+
+    - name: Allow ICMP (ping) traffic
+      when: "'k8s_controlplane' in group_names"
+      shell: iptables -I INPUT -p icmp -j ACCEPT
+      become: true
+
+    - name: Allow SSH traffic on port 22 (control plane)
+      when: "'k8s_controlplane' in group_names"
+      shell: iptables -I INPUT -p tcp --dport 22 -j ACCEPT
+      become: true
+
+    - name: Allow K3s API server traffic on port 6443 (control plane)
+      when: "'k8s_controlplane' in group_names"
+      shell: iptables -I INPUT -p tcp --dport 6443 -j ACCEPT
+      become: true
+
+    - name: Allow K3s server communication on port 6444 (control plane)
+      when: "'k8s_controlplane' in group_names"
+      shell: iptables -I INPUT -p tcp --dport 6444 -j ACCEPT
+      become: true
+
+    - name: Allow Flannel VXLAN traffic on port 8472 (control plane)
+      when: "'k8s_controlplane' in group_names"
+      shell: iptables -I INPUT -p udp --dport 8472 -j ACCEPT
+      become: true
+
+    - name: Allow Flannel WireGuard traffic on ports 51820 and 51821 (control plane)
+      when: "'k8s_controlplane' in group_names"
+      shell: |
+        iptables -I INPUT -p udp --dport 51820 -j ACCEPT
+        iptables -I INPUT -p udp --dport 51821 -j ACCEPT
+      become: true
+
+    - name: Save iptables rules and ensure they persist (control plane)
+      when: "'k8s_controlplane' in group_names"
+      shell: netfilter-persistent save
+      become: true
+
+    - name: Fetch the K3s node token from the control plane
+      slurp:
+        src: /var/lib/rancher/k3s/server/node-token
+      register: node_token
+      delegate_to: "{{ groups['k8s_controlplane'][0] }}"
+
+    - name: Set the K3s token fact
+      set_fact:
+        k3s_token: "{{ node_token.content | b64decode | trim }}"
+
+    - name: Join control plane node to the cluster
+      when: "'k8s_controlplane' in group_names"
+      shell: >
+        curl -sfL https://get.k3s.io | K3S_URL=https://{{ hostvars[groups['k8s_controlplane'][0]]['ansible_host'] }}:6443 \
+        K3S_TOKEN={{ k3s_token }} INSTALL_K3S_EXEC="server --tls-san {{ hostvars[groups['k8s_controlplane'][0]]['ansible_host'] }}" sh -
+      args:
+        executable: /bin/bash
+
+    - name: Join worker node to the cluster
+      when: "'k8s_worker' in group_names"
+      shell: >
+        curl -sfL https://get.k3s.io | K3S_URL=https://{{ hostvars[groups['k8s_controlplane'][0]]['ansible_host'] }}:6443 \
+        K3S_TOKEN={{ k3s_token }} sh -
+      args:
+        executable: /bin/bash
