@@ -52,25 +52,36 @@
       ansible.builtin.command:
         cmd: ~/k3s_venv/bin/ansible-galaxy collection install kubernetes.core --force
 
-    - name: Backup existing ansible.cfg if it exists
-      copy:
-        src: /etc/ansible/ansible.cfg
-        dest: /etc/ansible/ansible.cfg.bak
-        remote_src: yes 
-      become: true
-      when: file('/etc/ansible/ansible.cfg').stat.exists 
-
-    - name: Clear the contents of ansible.cfg
-      ansible.builtin.shell:
-        cmd: "echo -n '' > /etc/ansible/ansible.cfg" 
-      become: true
-
     - name: Create Ansible configuration directory if it doesn't exist
       file:
         path: /etc/ansible
         state: directory
         mode: '0755'
       become: true
+
+    - name: Check if ansible.cfg exists
+      stat:
+        path: /etc/ansible/ansible.cfg
+      register: ansible_cfg_stat
+      become: true
+
+    - name: Backup existing ansible.cfg if it exists
+      copy:
+        src: /etc/ansible/ansible.cfg
+        dest: /etc/ansible/ansible.cfg.bak
+        remote_src: yes
+      become: true
+      when:
+        - ansible_virtualization_type != 'docker'
+        - ansible_cfg_stat.stat.exists
+
+    - name: Clear the contents of ansible.cfg
+      ansible.builtin.shell:
+        cmd: "echo -n '' > /etc/ansible/ansible.cfg"
+      become: true
+      when:
+        - ansible_virtualization_type != 'docker'
+        - ansible_cfg_stat.stat.exists or ansible_cfg_stat.stat.exists == false
 
     - name: Ensure collections_path is set in ansible.cfg
       blockinfile: 
@@ -92,13 +103,3 @@
 
     - name: Verify kubernetes Python package installation in virtual environment
       command: ~/k3s_venv/bin/pip show kubernetes
-      register: kubernetes_installed
-      ignore_errors: yes
-
-    - name: Display success message if kubernetes package is installed
-      debug:
-        msg: "Kubernetes Python package installed successfully in virtualenv: {{ kubernetes_installed.stdout }}"
-
-    - name: Set environment variable for activating virtualenv
-      set_fact:
-        venv_path: "~/k3s_venv"
