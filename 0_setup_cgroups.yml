@@ -9,94 +9,43 @@
         state: present
         update_cache: yes
 
-    - name: Check if the kernel config file exists
-      stat:
-        path: "/boot/config-{{ ansible_kernel }}"
-      register: kernel_config_file
-
-    - name: Check kernel config for cgroups and memory controller support (if config file exists)
-      shell: "grep CONFIG_CGROUP /boot/config-{{ ansible_kernel }}"
-      when: kernel_config_file.stat.exists
-      register: cgroup_kernel_config
-      ignore_errors: yes
-
-    - name: Display kernel cgroup configuration (if config file exists)
-      debug:
-        msg: "{{ cgroup_kernel_config.stdout }}"
-      when: kernel_config_file.stat.exists
-
     - name: Manually back up cmdline.txt to /tmp/cmdline.txt.backup
       copy:
         src: /boot/firmware/cmdline.txt
         dest: /tmp/cmdline.txt.backup
         remote_src: yes
-      tags: cgroup_setup
+      tags:
+        - cgroup_setup
 
-    - name: Remove any existing line that starts with console or root-related kernel parameters
-      replace:
-        path: /boot/firmware/cmdline.txt
-        regexp: '^console=serial0,115200.*$'
-        replace: ''
-        backup: no
-      tags: cgroup_setup
+    - name: Retrieve the PARTUUID of the root partition
+      shell: "blkid -s PARTUUID -o value /dev/mmcblk0p2"
+      register: root_partuuid
+      changed_when: false
+      tags:
+        - cgroup_setup
 
-    - name: Ensure all kernel parameters are on a single line in cmdline.txt
+    - name: Remove existing duplicate lines from cmdline.txt
       lineinfile:
         path: /boot/firmware/cmdline.txt
-        line: "console=serial0,115200 console=tty1 root=PARTUUID=3d5c1c3e-02 rootfstype=ext4 fsck.repair=yes rootwait systemd.unified_cgroup_hierarchy=1 cgroup_enable=memory cgroup_memory=1"
+        regexp: 'root=PARTUUID='
+        state: absent
+      tags:
+        - cgroup_setup
+
+    - name: Ensure the correct PARTUUID is set in cmdline.txt and all parameters are on one line
+      lineinfile:
+        path: /boot/firmware/cmdline.txt
+        regexp: '^.*$'
+        line: "console=serial0,115200 console=tty1 root=PARTUUID={{ root_partuuid.stdout }} rootfstype=ext4 fsck.repair=yes rootwait systemd.unified_cgroup_hierarchy=1 cgroup_enable=memory cgroup_memory=1"
         state: present
-        create: yes
         backrefs: no
-      tags: cgroup_setup
+      tags:
+        - cgroup_setup
 
     - name: Remove any blank lines in cmdline.txt
       lineinfile:
         path: /boot/firmware/cmdline.txt
         regexp: '^\s*$'
         state: absent
-      tags: cgroup_setup
-
-    - name: Check if cgroup memory controller is enabled
-      shell: cat /sys/fs/cgroup/cgroup.controllers
-      register: cgroup_controllers
-      ignore_errors: yes
-
-    - name: Display cgroup controllers
-      debug:
-        msg: "{{ cgroup_controllers.stdout }}"
-
-    - name: Check current firmware revision on all nodes
-      shell: vcgencmd bootloader_version
-      register: firmware_version
-
-    - name: Extract timestamp from firmware version
-      set_fact:
-        firmware_timestamp: "{{ firmware_version.stdout | regex_search('timestamp ([0-9]+)', '\\1') }}"
-
-    - name: Set fact to indicate firmware update is needed
-      set_fact:
-        firmware_update_needed: true
-      when: firmware_timestamp | int != 1725562327
-
-    - name: Notify if firmware is already up to date
-      debug:
-        msg: "Firmware is already up to date."
-      when: not firmware_update_needed
-
-    - name: Upgrade the Raspberry Pi kernel to the latest version if not up to date
-      shell: |
-        yes | sudo rpi-update
-      register: kernel_updated
-      when: firmware_update_needed
-      async: 6000      # Setting a 100-minute timeout
-      poll: 300        # Polling every 5 minutes to check for completion
-
-    - name: Notify about kernel upgrade completion
-      debug:
-        msg: "Kernel upgrade completed."
-      when: kernel_updated.changed
-
-    - name: Reboot the system if necessary
-      reboot:
-        msg: "Rebooting after kernel upgrade"
-      when: kernel_updated.changed
+      tags:
+        - cgroup_setup
