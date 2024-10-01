@@ -3,15 +3,14 @@
   hosts: localhost
   tasks:
 
-    - name: Activate virtual environment (using environment keyword)
-      ansible.builtin.shell:
-        cmd: echo "Virtual Environment Activated"
-      environment:
-        PATH: "~/k3s_venv/bin:{{ ansible_env.PATH }}"
-
     - name: Update apt cache
       apt:
         update_cache: yes
+      become: true
+
+    - name: Upgrade all packages
+      apt: 
+        upgrade: dist
       become: true
 
     - name: Install required system packages
@@ -34,23 +33,29 @@
       args:
         creates: ~/k3s_venv/bin/activate
 
+    - name: Upgrade pip and install required Python packages
+      pip:
+        name:
+          - pip
+          - ansible
+        state: latest
+        virtualenv: ~/k3s_venv
+
     - name: Install required Python packages using requirements.txt in virtual environment
       pip:
         requirements: "{{ playbook_dir }}/requirements.txt"
         virtualenv: ~/k3s_venv
 
     - name: Configure pip to use Ansible Galaxy index in virtual environment
-      ansible.builtin.command:
-        cmd: ~/k3s_venv/bin/pip config set global.index-url https://galaxy.ansible.com/api/automation-hub/v3/collections/
+      command: "~/k3s_venv/bin/pip config set global.index-url https://galaxy.ansible.com/api/automation-hub/v3/collections/"
 
     - name: Remove Ansible collection cache directory (if it exists)
-      ansible.builtin.file:
+      file:
         path: ~/.ansible/collections
         state: absent
 
     - name: Force install kubernetes.core Ansible collection in virtual environment
-      ansible.builtin.command:
-        cmd: ~/k3s_venv/bin/ansible-galaxy collection install kubernetes.core --force
+      command: "~/k3s_venv/bin/ansible-galaxy collection install kubernetes.core --force"
 
     - name: Create Ansible configuration directory if it doesn't exist
       file:
@@ -72,16 +77,7 @@
         remote_src: yes
       become: true
       when:
-        - ansible_virtualization_type != 'docker'
         - ansible_cfg_stat.stat.exists
-
-    - name: Clear the contents of ansible.cfg
-      ansible.builtin.shell:
-        cmd: "echo -n '' > /etc/ansible/ansible.cfg"
-      become: true
-      when:
-        - ansible_virtualization_type != 'docker'
-        - ansible_cfg_stat.stat.exists or ansible_cfg_stat.stat.exists == false
 
     - name: Ensure collections_path is set in ansible.cfg
       blockinfile: 
