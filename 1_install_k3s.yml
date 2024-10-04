@@ -37,6 +37,15 @@
       args:
         creates: /usr/local/bin/k3s
 
+    - name: Ensure that SQLite is configured (default)
+      shell: |
+        if grep -q 'etcd' /etc/rancher/k3s/k3s.yaml; then
+          echo "K3s is using etcd, which is incorrect."
+          exit 1
+        fi
+      register: sqlite_check
+      failed_when: "'K3s is using etcd' in sqlite_check.stdout"
+
     - name: Verify K3s installation
       command: k3s --version
       register: k3s_version_check
@@ -57,3 +66,9 @@
         state: started
         enabled: yes
       when: inventory_hostname in groups['k8s_controlplane']
+
+    - name: Set a common K3s token on all nodes
+      copy:
+        content: "{{ lookup('password', '/dev/null length=32 chars=ascii_letters,digits') }}"
+        dest: /var/lib/rancher/k3s/server/node-token
+      become: yes
