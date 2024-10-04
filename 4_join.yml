@@ -1,0 +1,38 @@
+---
+- name: Join Control Plane and Worker Nodes to K3s Cluster
+  hosts: k8s_controlplane, k8s_worker
+  become: true
+  gather_facts: false
+
+  tasks:
+    - name: Fetch the K3s node token from the control plane
+      slurp:
+        src: /var/lib/rancher/k3s/server/node-token
+      register: node_token
+      delegate_to: "{{ groups['k8s_controlplane'][0] }}"
+
+    - name: Set the K3s token fact
+      set_fact:
+        k3s_token: "{{ node_token.content | b64decode | trim }}"
+
+    - name: Join control plane node to the cluster
+      when: "'k8s_controlplane' in group_names"
+      shell: >
+        curl -sfL https://get.k3s.io | K3S_URL=https://{{ hostvars[groups['k8s_controlplane'][0]]['ansible_host'] }}:6443 \
+        K3S_TOKEN={{ k3s_token }} INSTALL_K3S_EXEC="server --tls-san {{ hostvars[groups['k8s_controlplane'][0]]['ansible_host'] }}" sh -
+      args:
+        executable: /bin/bash
+      failed_when: "'Failed to process request' in result.stderr"
+      register: result
+      changed_when: result.rc != 0
+
+    - name: Join worker node to the cluster
+      when: "'k8s_worker' in group_names"
+      shell: >
+        curl -sfL https://get.k3s.io | K3S_URL=https://{{ hostvars[groups['k8s_controlplane'][0]]['ansible_host'] }}:6443 \
+        K3S_TOKEN={{ k3s_token }} sh -
+      args:
+        executable: /bin/bash
+      failed_when: "'Failed to process request' in result.stderr"
+      register: result
+      changed_when: result.rc != 0

@@ -1,0 +1,55 @@
+---
+- name: Configure Firewall and Prepare K3s Nodes
+  hosts: k8s_controlplane
+  become: true
+  gather_facts: false
+
+  tasks:
+    - name: Install iptables and iptables-persistent
+      apt:
+        name:
+          - iptables
+          - iptables-persistent
+        state: present
+
+    - name: Ensure /etc/iptables directory exists
+      file:
+        path: /etc/iptables
+        state: directory
+        mode: '0755'
+
+    - name: Allow established connections
+      shell: iptables -I INPUT 1 -m conntrack --ctstate ESTABLISHED,RELATED -j ACCEPT
+
+    - name: Allow ICMP (ping) traffic
+      shell: iptables -I INPUT 2 -p icmp -j ACCEPT
+
+    - name: Allow SSH traffic on port 22
+      shell: iptables -I INPUT 3 -p tcp --dport 22 -j ACCEPT
+
+    - name: Allow K3s API server traffic on port 6443
+      shell: iptables -I INPUT 4 -p tcp --dport 6443 -j ACCEPT
+
+    - name: Allow K3s server communication on port 6444
+      shell: iptables -I INPUT 5 -p tcp --dport 6444 -j ACCEPT
+
+    - name: Allow Flannel VXLAN traffic on port 8472
+      shell: iptables -I INPUT 6 -p udp --dport 8472 -j ACCEPT
+
+    - name: Allow Flannel WireGuard traffic on ports 51820 and 51821
+      shell: |
+        iptables -I INPUT 7 -p udp --dport 51820 -j ACCEPT
+        iptables -I INPUT 8 -p udp --dport 51821 -j ACCEPT
+
+    - name: Wait for K3s server to be ready
+      uri:
+        url: https://localhost:6443/healthz
+        method: GET
+        validate_certs: no  # Since we're using self-signed certs
+      register: result
+      until: result.status == 200
+      retries: 120
+      delay: 1
+      
+    - name: Save iptables rules and ensure they persist
+      shell: iptables-save > /etc/iptables/rules.v4
