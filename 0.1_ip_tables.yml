@@ -1,6 +1,6 @@
 ---
 - name: Configure Firewall and Prepare K3s Nodes
-  hosts: k8s_controlplane
+  hosts: k8s
   become: true
   gather_facts: false
 
@@ -41,15 +41,5 @@
         iptables -I INPUT 7 -p udp --dport 51820 -j ACCEPT
         iptables -I INPUT 8 -p udp --dport 51821 -j ACCEPT
 
-    - name: Wait for K3s server to be ready
-      uri:
-        url: https://localhost:6443/healthz
-        method: GET
-        validate_certs: no  # Since we're using self-signed certs
-      register: result
-      until: result.status == 200
-      retries: 120
-      delay: 1
-      
     - name: Save iptables rules and ensure they persist
       shell: iptables-save > /etc/iptables/rules.v4
