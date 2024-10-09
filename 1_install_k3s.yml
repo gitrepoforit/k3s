@@ -33,7 +33,12 @@
     - name: Download and execute K3s install script
       shell: |
         curl -sfL https://get.k3s.io/ -o /tmp/k3s-install.sh
-        INSTALL_K3S_VERSION=v1.31.0+k3s1 sh /tmp/k3s-install.sh
+        K3S_URL=https://{{ hostvars[groups['k8s_controlplane'][0]]['ansible_host'] }}:6443 \
+        K3S_TOKEN=<your_token_here> \
+        INSTALL_K3S_VERSION=v1.31.0+k3s1 sh /tmp/k3s-install.sh \
+        --write-kubeconfig-mode 644 \
+        --tls-san {{ hostvars[groups['k8s_controlplane'][0]]['ansible_host'] }} \
+        --datastore-endpoint sqlite:///var/lib/rancher/k3s/server/db.sqlite
       args:
         creates: /usr/local/bin/k3s
 
