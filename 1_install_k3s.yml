@@ -47,11 +47,19 @@
       register: node_token
       delegate_to: "{{ groups['k8s_controlplane'][0] }}"
 
-    # Set the token fact for worker nodes
-    - name: Set K3s token for worker nodes
+    # Set the token fact for all nodes
+    - name: Set K3s token fact for all nodes
       set_fact:
         k3s_token: "{{ node_token.content | b64decode }}"
-      tags: install
+
+    # Ensure correct k3s service configuration on control plane nodes
+    - name: Ensure correct k3s service configuration on control plane nodes
+      lineinfile:
+        path: /etc/systemd/system/k3s.service
+        regexp: '^ExecStart=.*'
+        line: 'ExecStart=/usr/local/bin/k3s server --tls-san {{ hostvars[groups["k8s_controlplane"][0]].ansible_host }} --token {{ k3s_token }} --datastore-endpoint sqlite:///var/lib/rancher/k3s/server/db.sqlite'
+      notify: Restart k3s
+      when: "'k8s_controlplane' in group_names"
 
     # Install K3s agent on worker nodes
     - name: Install K3s on worker nodes
@@ -61,7 +69,7 @@
         K3S_URL=https://{{ hostvars[groups['k8s_controlplane'][0]]['ansible_host'] }}:6443 \
         K3S_TOKEN={{ k3s_token }} \
         INSTALL_K3S_VERSION=v1.31.0+k3s1 \
-        sh /tmp/k3s-install.sh
+        sh /tmp/k3s-install.sh --write-kubeconfig-mode 644
       args:
         creates: /usr/local/bin/k3s
 
@@ -74,6 +82,7 @@
         msg: "K3s installation failed"
       when: k3s_version_check.rc != 0
 
+    # Ensure SQLite is used for datastore on control plane nodes
     - name: Ensure SQLite is used for datastore on control plane nodes
       when: "'k8s_controlplane' in group_names"
       shell: |
@@ -89,17 +98,24 @@
         msg: "Rebooting after disabling swap"
       when: bootloader_updated.changed and inventory_hostname != 'controlplane1'
 
+    # Start K3s service on control plane nodes
     - name: Start K3s service on control plane nodes
       service:
         name: k3s
         state: started
         enabled: yes
-      when: inventory_hostname in groups['k8s_controlplane']
+      when: "'k8s_controlplane' in group_names"
 
+    # Start K3s agent service on worker nodes
     - name: Start K3s agent service on worker nodes
       service:
         name: k3s-agent
         state: started
         enabled: yes
-      when: inventory_hostname in groups['k8s_worker']
-      tags: install
+      when: "'k8s_worker' in group_names"
+
+  handlers:
+    - name: Restart k3s
+      service:
+        name: k3s
+        state: restarted
