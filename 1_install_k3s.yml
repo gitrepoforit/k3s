@@ -29,6 +29,17 @@
           - apt-transport-https
           - software-properties-common
 
+    - name: Ensure K3s agent is not installed on control plane nodes
+      when: "'k8s_controlplane' in group_names"
+      shell: |
+        if systemctl is-active --quiet k3s-agent; then
+          sudo systemctl stop k3s-agent
+          sudo systemctl disable k3s-agent
+          sudo apt remove -y k3s-agent
+        fi
+      ignore_errors: yes
+
+    # Install K3s on control plane nodes
     - name: Install K3s on control plane nodes
       when: "'k8s_controlplane' in group_names"
       shell: |
@@ -55,6 +66,7 @@
       notify: Restart k3s
       when: "'k8s_controlplane' in group_names"
 
+    # Install K3s on worker nodes
     - name: Install K3s on worker nodes
       when: "'k8s_worker' in group_names"
       shell: |
