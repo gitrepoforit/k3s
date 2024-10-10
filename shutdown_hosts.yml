@@ -1,0 +1,11 @@
+---
+- name: Shut down all hosts except controlplane1
+  hosts: all:!controlplane1
+  become: true
+  gather_facts: false
+
+  tasks:
+    - name: Shut down the host
+      command: shutdown now
+      ignore_errors: true
+
