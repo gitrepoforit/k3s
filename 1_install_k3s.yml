@@ -4,7 +4,6 @@
   become: true
 
   tasks:
-  
     - name: Disable swap completely
       shell: |
         dphys-swapfile swapoff
@@ -30,26 +29,41 @@
           - apt-transport-https
           - software-properties-common
 
-    - name: Download and execute K3s install script
+    # Install K3s server on control plane nodes
+    - name: Install K3s on control plane nodes
+      when: "'k8s_controlplane' in group_names"
       shell: |
         curl -sfL https://get.k3s.io/ -o /tmp/k3s-install.sh
-        K3S_URL=https://{{ hostvars[groups['k8s_controlplane'][0]]['ansible_host'] }}:6443 \
-        K3S_TOKEN=<your_token_here> \
-        INSTALL_K3S_VERSION=v1.31.0+k3s1 sh /tmp/k3s-install.sh \
-        --write-kubeconfig-mode 644 \
-        --tls-san {{ hostvars[groups['k8s_controlplane'][0]]['ansible_host'] }} \
-        --datastore-endpoint sqlite:///var/lib/rancher/k3s/server/db.sqlite
+        INSTALL_K3S_VERSION=v1.31.0+k3s1 \
+        INSTALL_K3S_EXEC="server --tls-san {{ hostvars[groups['k8s_controlplane'][0]]['ansible_host'] }} --datastore-endpoint sqlite:///var/lib/rancher/k3s/server/db.sqlite" \
+        sh /tmp/k3s-install.sh --write-kubeconfig-mode 644
       args:
         creates: /usr/local/bin/k3s
 
-    - name: Ensure that SQLite is configured (default)
+    # Fetch the K3s node token from the control plane
+    - name: Fetch the K3s node token from the control plane
+      slurp:
+        src: /var/lib/rancher/k3s/server/node-token
+      register: node_token
+      delegate_to: "{{ groups['k8s_controlplane'][0] }}"
+
+    # Set the token fact for worker nodes
+    - name: Set K3s token for worker nodes
+      set_fact:
+        k3s_token: "{{ node_token.content | b64decode }}"
+      tags: install
+
+    # Install K3s agent on worker nodes
+    - name: Install K3s on worker nodes
+      when: "'k8s_worker' in group_names"
       shell: |
-        if grep -q 'etcd' /etc/rancher/k3s/k3s.yaml; then
-          echo "K3s is using etcd, which is incorrect."
-          exit 1
-        fi
-      register: sqlite_check
-      failed_when: "'K3s is using etcd' in sqlite_check.stdout"
+        curl -sfL https://get.k3s.io/ -o /tmp/k3s-install.sh
+        K3S_URL=https://{{ hostvars[groups['k8s_controlplane'][0]]['ansible_host'] }}:6443 \
+        K3S_TOKEN={{ k3s_token }} \
+        INSTALL_K3S_VERSION=v1.31.0+k3s1 \
+        sh /tmp/k3s-install.sh
+      args:
+        creates: /usr/local/bin/k3s
 
     - name: Verify K3s installation
       command: k3s --version
@@ -60,20 +74,32 @@
         msg: "K3s installation failed"
       when: k3s_version_check.rc != 0
 
+    - name: Ensure SQLite is used for datastore on control plane nodes
+      when: "'k8s_controlplane' in group_names"
+      shell: |
+        if grep -q 'etcd' /etc/rancher/k3s/k3s.yaml; then
+          echo "K3s is using etcd, which is incorrect."
+          exit 1
+        fi
+      register: sqlite_check
+      failed_when: "'K3s is using etcd' in sqlite_check.stdout"
+
     - name: Reboot the system if necessary (excluding controlplane1)
       reboot:
         msg: "Rebooting after disabling swap"
       when: bootloader_updated.changed and inventory_hostname != 'controlplane1'
 
-    - name: Start K3s service on controlplane nodes
+    - name: Start K3s service on control plane nodes
       service:
         name: k3s
         state: started
         enabled: yes
       when: inventory_hostname in groups['k8s_controlplane']
 
-    - name: Set a common K3s token on all nodes
-      copy:
-        content: "{{ lookup('password', '/dev/null length=32 chars=ascii_letters,digits') }}"
-        dest: /var/lib/rancher/k3s/server/node-token
-      become: yes
+    - name: Start K3s agent service on worker nodes
+      service:
+        name: k3s-agent
+        state: started
+        enabled: yes
+      when: inventory_hostname in groups['k8s_worker']
+      tags: install
