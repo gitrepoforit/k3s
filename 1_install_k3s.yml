@@ -29,39 +29,32 @@
           - apt-transport-https
           - software-properties-common
 
-    # Install K3s server on control plane nodes
     - name: Install K3s on control plane nodes
       when: "'k8s_controlplane' in group_names"
       shell: |
         curl -sfL https://get.k3s.io/ -o /tmp/k3s-install.sh
         INSTALL_K3S_VERSION=v1.31.0+k3s1 \
-        INSTALL_K3S_EXEC="server --tls-san {{ hostvars[groups['k8s_controlplane'][0]]['ansible_host'] }} --datastore-endpoint sqlite:///var/lib/rancher/k3s/server/db.sqlite" \
         sh /tmp/k3s-install.sh --write-kubeconfig-mode 644
       args:
         creates: /usr/local/bin/k3s
 
-    # Fetch the K3s node token from the control plane
     - name: Fetch the K3s node token from the control plane
       slurp:
         src: /var/lib/rancher/k3s/server/node-token
       register: node_token
       delegate_to: "{{ groups['k8s_controlplane'][0] }}"
 
-    # Set the token fact for all nodes
     - name: Set K3s token fact for all nodes
       set_fact:
         k3s_token: "{{ node_token.content | b64decode }}"
 
-    # Ensure correct k3s service configuration on control plane nodes
-    - name: Ensure correct k3s service configuration on control plane nodes
-      lineinfile:
-        path: /etc/systemd/system/k3s.service
-        regexp: '^ExecStart=.*'
-        line: 'ExecStart=/usr/local/bin/k3s server --tls-san {{ hostvars[groups["k8s_controlplane"][0]].ansible_host }} --token {{ k3s_token }} --datastore-endpoint sqlite:///var/lib/rancher/k3s/server/db.sqlite'
+    - name: Deploy k3s service configuration on control plane nodes
+      template:
+        src: k3s_service.j2
+        dest: /etc/systemd/system/k3s.service
       notify: Restart k3s
       when: "'k8s_controlplane' in group_names"
 
-    # Install K3s agent on worker nodes
     - name: Install K3s on worker nodes
       when: "'k8s_worker' in group_names"
       shell: |
@@ -82,7 +75,6 @@
         msg: "K3s installation failed"
       when: k3s_version_check.rc != 0
 
-    # Ensure SQLite is used for datastore on control plane nodes
     - name: Ensure SQLite is used for datastore on control plane nodes
       when: "'k8s_controlplane' in group_names"
       shell: |
@@ -98,7 +90,6 @@
         msg: "Rebooting after disabling swap"
       when: bootloader_updated.changed and inventory_hostname != 'controlplane1'
 
-    # Start K3s service on control plane nodes
     - name: Start K3s service on control plane nodes
       service:
         name: k3s
@@ -106,7 +97,6 @@
         enabled: yes
       when: "'k8s_controlplane' in group_names"
 
-    # Start K3s agent service on worker nodes
     - name: Start K3s agent service on worker nodes
       service:
         name: k3s-agent
