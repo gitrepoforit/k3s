@@ -1,0 +1,23 @@
+- name: Install K3s agent and join cluster on Rocky Linux nodes
+  hosts: rocky_nodes
+  become: true
+  vars:
+    k3s_url: "https://192.168.1.91:6443"  # Replace with your K3s control plane IP
+
+  tasks:
+    - name: Read the K3s token from the control plane host
+      command: cat /var/lib/rancher/k3s/server/node-token
+      register: token_output
+      delegate_to: localhost  # Run this task on the local control plane host
+
+    - name: Set the K3s token as a fact
+      set_fact:
+        k3s_token: "{{ token_output.stdout }}"
+
+    - name: Download and install K3s agent
+      shell: |
+        curl -sfL https://get.k3s.io | K3S_URL={{ k3s_url }} K3S_TOKEN={{ k3s_token }} sh -
+      args:
+        executable: /bin/bash
+        creates: /etc/rancher/k3s/k3s.yaml
+
