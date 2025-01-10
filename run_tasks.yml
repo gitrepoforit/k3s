@@ -1,0 +1,33 @@
+---
+- name: Set up cgroups
+  import_playbook: 0_setup_cgroups.yml
+
+- name: Configure IP tables
+  import_playbook: 0.1_ip_tables.yml
+
+- name: Configure Ansible dependencies
+  import_playbook: 1.1_configure_ansible_dependencies.yml
+
+- name: Add virtualenv to bashrc
+  import_playbook: 1.2_add_virtualenv_to_bashrc.yml
+
+- name: Create secrets
+  import_playbook: 1.3_create_secrets.yml
+
+- name: Install k3s
+  import_playbook: 1_install_k3s.yml
+
+- name: Generate kubeconfig
+  import_playbook: 2_generate_kubeconfig.yml
+
+- name: Join additional nodes
+  import_playbook: 4_join.yml
+
+- name: Fetch k3s token
+  import_playbook: 5_fetch_k3s_token.yml
+
+- name: Prepare Rocky Linux
+  import_playbook: 6_prepare_rocky_linux.yml
+
+- name: Install k3s and join
+  import_playbook: 7_install_k3s_and_join.yml
