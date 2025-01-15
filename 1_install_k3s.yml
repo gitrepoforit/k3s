@@ -29,6 +29,58 @@
           - apt-transport-https
           - software-properties-common
 
+    - name: Install PostgreSQL
+      apt:
+        name: postgresql
+        state: present
+      when: inventory_hostname == 'controlplane1'
+
+    - name: Start and enable PostgreSQL service
+      systemd:
+        name: postgresql
+        state: started
+        enabled: yes
+      when: inventory_hostname == 'controlplane1'
+
+    - name: Create PostgreSQL user
+      become_user: postgres
+      postgresql_user:
+        name: "{{ postgres_user }}"
+        password: "{{ postgres_password }}"
+        state: present
+      when: inventory_hostname == 'controlplane1'
+
+    - name: Create PostgreSQL database
+      become_user: postgres
+      postgresql_db:
+        name: "{{ postgres_db }}"
+        owner: "{{ postgres_user }}"
+        state: present
+      when: inventory_hostname == 'controlplane1'
+
+    - name: Configure PostgreSQL to listen on all interfaces
+      lineinfile:
+        path: /etc/postgresql/12/main/postgresql.conf
+        regexp: '^#?listen_addresses ='
+        line: "listen_addresses = '*'"
+      when: inventory_hostname == 'controlplane1'
+
+    - name: Allow access from other control plane nodes
+      lineinfile:
+        path: /etc/postgresql/12/main/pg_hba.conf
+        line: "host    all             all             {{ item }}/32            md5"
+      with_items:
+        - 192.168.1.91
+        - 192.168.1.92
+        - 192.168.1.93
+      when: inventory_hostname == 'controlplane1'
+
+    - name: Restart PostgreSQL to apply changes
+      systemd:
+        name: postgresql
+        state: restarted
+      when: inventory_hostname == 'controlplane1'
+
     - name: Ensure K3s agent is not installed on control plane nodes
       when: "'k8s_controlplane' in group_names"
       shell: |
@@ -44,8 +96,10 @@
       when: "'k8s_controlplane' in group_names"
       shell: |
         curl -sfL https://get.k3s.io/ -o /tmp/k3s-install.sh
-        INSTALL_K3S_VERSION=v1.31.0+k3s1 \
-        sh /tmp/k3s-install.sh --write-kubeconfig-mode 644
+        sh /tmp/k3s-install.sh --write-kubeconfig-mode 644 \
+          --datastore-endpoint="postgresql://{{ postgres_user }}:{{ postgres_password }}@{{ postgres_host }}/{{ postgres_db }}" \
+          --tls-san {{ postgres_host }} \
+          --node-name {{ inventory_hostname }}
       args:
         creates: /usr/local/bin/k3s
 

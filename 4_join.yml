@@ -15,10 +15,19 @@
       set_fact:
         k3s_token: "{{ node_token.content | b64decode | trim }}"
 
-    - name: Check if control plane node is already part of the cluster
+    - name: Check if worker node is already part of the cluster
+      when: "'k8s_worker' in group_names"
+      shell: kubectl get nodes | grep "{{ inventory_hostname }}"
+      register: worker_check
+      delegate_to: controlplane1
+      ignore_errors: true
+      changed_when: false
+  
+    - name: Check if controlplane node is already part of the cluster
       when: "'k8s_controlplane' in group_names"
       shell: kubectl get nodes | grep "{{ inventory_hostname }}"
       register: controlplane_check
+      delegate_to: controlplane1
       ignore_errors: true
       changed_when: false
 
