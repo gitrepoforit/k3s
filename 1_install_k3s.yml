@@ -1,4 +1,3 @@
----
 - name: Install K3s on Raspberry Pi Cluster
   hosts: k8s
   become: true
@@ -29,108 +28,45 @@
           - apt-transport-https
           - software-properties-common
 
-    - name: Install PostgreSQL
-      apt:
-        name: postgresql
-        state: present
-      when: inventory_hostname == 'controlplane1'
-
-    - name: Start and enable PostgreSQL service
-      systemd:
-        name: postgresql
-        state: started
-        enabled: yes
-      when: inventory_hostname == 'controlplane1'
-
-    - name: Create PostgreSQL user
-      become_user: postgres
-      postgresql_user:
-        name: "{{ postgres_user }}"
-        password: "{{ postgres_password }}"
-        state: present
-      when: inventory_hostname == 'controlplane1'
-
-    - name: Create PostgreSQL database
-      become_user: postgres
-      postgresql_db:
-        name: "{{ postgres_db }}"
-        owner: "{{ postgres_user }}"
-        state: present
-      when: inventory_hostname == 'controlplane1'
-
-    - name: Configure PostgreSQL to listen on all interfaces
-      lineinfile:
-        path: /etc/postgresql/12/main/postgresql.conf
-        regexp: '^#?listen_addresses ='
-        line: "listen_addresses = '*'"
-      when: inventory_hostname == 'controlplane1'
-
-    - name: Allow access from other control plane nodes
-      lineinfile:
-        path: /etc/postgresql/12/main/pg_hba.conf
-        line: "host    all             all             {{ item }}/32            md5"
-      with_items:
-        - 192.168.1.91
-        - 192.168.1.92
-        - 192.168.1.93
-      when: inventory_hostname == 'controlplane1'
-
-    - name: Restart PostgreSQL to apply changes
-      systemd:
-        name: postgresql
-        state: restarted
-      when: inventory_hostname == 'controlplane1'
-
-    - name: Ensure K3s agent is not installed on control plane nodes
-      when: "'k8s_controlplane' in group_names"
+- name: Install K3s on First Control Plane (Cluster Init)
+  hosts: controlplane1
+  become: yes
+  tasks:
+    - name: Install K3s with embedded etcd
       shell: |
-        if systemctl is-active --quiet k3s-agent; then
-          sudo systemctl stop k3s-agent
-          sudo systemctl disable k3s-agent
-          sudo apt remove -y k3s-agent
-        fi
-      ignore_errors: yes
-
-    # Install K3s on control plane nodes
-    - name: Install K3s on control plane nodes
-      when: "'k8s_controlplane' in group_names"
-      shell: |
-        curl -sfL https://get.k3s.io/ -o /tmp/k3s-install.sh
-        sh /tmp/k3s-install.sh --write-kubeconfig-mode 644 \
-          --datastore-endpoint="postgresql://{{ postgres_user }}:{{ postgres_password }}@{{ postgres_host }}/{{ postgres_db }}" \
-          --tls-san {{ postgres_host }} \
-          --node-name {{ inventory_hostname }}
+        curl -sfL https://get.k3s.io | INSTALL_K3S_EXEC="server --cluster-init --etcd-expose-metrics --write-kubeconfig-mode 644" sh -
       args:
-        creates: /usr/local/bin/k3s
+        creates: /etc/rancher/k3s/k3s.yaml
 
-    - name: Fetch the K3s node token from the control plane
-      slurp:
-        src: /var/lib/rancher/k3s/server/node-token
+    - name: Get node token
+      shell: cat /var/lib/rancher/k3s/server/node-token
       register: node_token
-      delegate_to: "{{ groups['k8s_controlplane'][0] }}"
+      changed_when: false
 
-    - name: Set K3s token fact for all nodes
+    - name: Set node token fact
       set_fact:
-        k3s_token: "{{ node_token.content | b64decode }}"
+        k3s_node_token: "{{ node_token.stdout }}"
 
-    - name: Deploy k3s service configuration on control plane nodes
-      template:
-        src: k3s_service.j2
-        dest: /etc/systemd/system/k3s.service
-      notify: Restart k3s
-      when: "'k8s_controlplane' in group_names"
-
-    # Install K3s on worker nodes
-    - name: Install K3s on worker nodes
-      when: "'k8s_worker' in group_names"
+- name: Install K3s on Additional Control Planes
+  hosts: k8s_controlplane
+  become: yes
+  tasks:
+    - name: Install K3s and join cluster
       shell: |
-        curl -sfL https://get.k3s.io/ -o /tmp/k3s-install.sh
-        K3S_URL=https://{{ hostvars[groups['k8s_controlplane'][0]]['ansible_host'] }}:6443 \
-        K3S_TOKEN={{ k3s_token }} \
-        INSTALL_K3S_VERSION=v1.31.0+k3s1 \
-        sh /tmp/k3s-install.sh --write-kubeconfig-mode 644
+        curl -sfL https://get.k3s.io | INSTALL_K3S_EXEC="server --server https://{{ groups['k8s_controlplane'][0] }}:6443 --etcd-expose-metrics" K3S_TOKEN={{ hostvars['controlplane1']['k3s_node_token'] }} sh -
       args:
-        creates: /usr/local/bin/k3s
+        creates: /etc/rancher/k3s/k3s.yaml
+      when: inventory_hostname != 'controlplane1'
+
+- name: Install K3s on Worker Nodes
+  hosts: k8s_worker
+  become: yes
+  tasks:
+    - name: Install K3s agent and join cluster
+      shell: |
+        curl -sfL https://get.k3s.io | INSTALL_K3S_EXEC="agent --server https://{{ groups['k8s_controlplane'][0] }}:6443" K3S_TOKEN={{ hostvars['controlplane1']['k3s_node_token'] }} sh -
+      args:
+        creates: /etc/rancher/k3s/k3s.yaml
 
     - name: Verify K3s installation
       command: k3s --version
@@ -140,16 +76,6 @@
       fail:
         msg: "K3s installation failed"
       when: k3s_version_check.rc != 0
-
-    - name: Ensure SQLite is used for datastore on control plane nodes
-      when: "'k8s_controlplane' in group_names"
-      shell: |
-        if grep -q 'etcd' /etc/rancher/k3s/k3s.yaml; then
-          echo "K3s is using etcd, which is incorrect."
-          exit 1
-        fi
-      register: sqlite_check
-      failed_when: "'K3s is using etcd' in sqlite_check.stdout"
 
     - name: Reboot the system if necessary (excluding controlplane1)
       reboot:
@@ -161,14 +87,12 @@
         name: k3s
         state: started
         enabled: yes
-      when: "'k8s_controlplane' in group_names"
 
     - name: Start K3s agent service on worker nodes
       service:
         name: k3s-agent
         state: started
         enabled: yes
-      when: "'k8s_worker' in group_names"
 
   handlers:
     - name: Restart k3s

@@ -10,8 +10,19 @@
         enabled: no
       ignore_errors: yes
 
+    - name: Stop K3s agent service
+      systemd:
+        name: k3s-agent
+        state: stopped
+        enabled: no
+      ignore_errors: yes
+
     - name: Uninstall K3s
       command: /usr/local/bin/k3s-uninstall.sh
+      ignore_errors: yes
+
+    - name: Uninstall K3s agent
+      command: /usr/local/bin/k3s-agent-uninstall.sh
       ignore_errors: yes
 
     - name: Remove K3s directories
@@ -22,6 +33,7 @@
         - /etc/rancher/k3s
         - /var/lib/rancher/k3s
         - /usr/local/bin/k3s
+        - /usr/local/bin/k3s-agent
 
     - name: Remove iptables rules created by K3s
       command: iptables-save | grep -v KUBE | iptables-restore
