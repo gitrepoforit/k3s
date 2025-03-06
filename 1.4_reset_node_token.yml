@@ -1,0 +1,23 @@
+---
+- name: Update K3s Node Token
+  hosts: k8s_controlplane
+
+  become: yes
+  tasks:
+    - name: Generate a new token using k3s CLI
+      shell: "k3s token create"
+      register: new_token
+      run_once: true
+
+    - name: Update node-token file
+      copy:
+        content: "{{ new_token.stdout }}"
+        dest: /var/lib/rancher/k3s/server/node-token
+        owner: root
+        group: root
+        mode: '0600'
+
+    - name: Restart K3s server
+      service:
+        name: k3s
+        state: restarted

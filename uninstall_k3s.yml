@@ -36,5 +36,5 @@
         - /usr/local/bin/k3s-agent
 
     - name: Remove iptables rules created by K3s
-      command: iptables-save | grep -v KUBE | iptables-restore
+      shell: "iptables-save | grep -v 'KUBE' | iptables-restore"
       ignore_errors: yes
