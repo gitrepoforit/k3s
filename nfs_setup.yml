@@ -1,0 +1,60 @@
+---
+- name: Configure NFS for k3s
+  hosts: nfs_server
+  become: true
+
+  vars:
+    shared_directory: /data
+    nfs_subnet: 192.168.1.0/24
+    nfs_server_ip: 192.168.1.99
+
+  tasks:
+
+    # Step 1: Install NFS Utilities
+    - name: Install NFS utilities
+      ansible.builtin.yum:
+        name: nfs-utils
+        state: present
+
+    # Step 2: Create Shared Directory
+    - name: Create shared directory
+      ansible.builtin.file:
+        path: "{{ shared_directory }}"
+        state: directory
+        mode: '2770'
+        owner: 1000
+        group: 65534
+
+    # Step 3: Configure NFS Exports
+    - name: Configure NFS exports
+      ansible.builtin.lineinfile:
+        path: /etc/exports
+        line: "{{ shared_directory }} {{ nfs_subnet }}(rw,sync,anonuid=1000,anongid=65534,root_squash)"
+        create: yes
+
+    # Step 4: Reload NFS Exports
+    - name: Reload NFS exports
+      ansible.builtin.command:
+        cmd: exportfs -ra
+
+    # Step 5: Enable and Start NFS Service
+    - name: Enable and start NFS server
+      ansible.builtin.service:
+        name: nfs-server
+        state: started
+        enabled: true
+
+    # Step 6: Configure Firewall for NFS
+    - name: Allow NFS service in firewall
+      ansible.builtin.firewalld:
+        service: "{{ item }}"
+        permanent: true
+        state: enabled
+      loop:
+        - nfs
+        - mountd
+        - rpc-bind
+
+    - name: Reload firewall
+      ansible.builtin.firewalld:
+        state: reloaded

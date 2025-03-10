@@ -82,22 +82,22 @@
         msg: "Rebooting after disabling swap"
       when: bootloader_updated.changed and inventory_hostname != 'controlplane1'
 
-    - name: Start K3s service on control plane nodes
+- name: Start K3s services on control plane nodes
+  hosts: k8s_controlplane
+  become: yes
+  tasks:
+    - name: Start K3s service
       service:
         name: k3s
         state: started
         enabled: yes
-      when: "'k8s_controlplane' in group_names"
 
-    - name: Start K3s agent service on worker nodes
+- name: Start K3s agent services on worker nodes
+  hosts: k8s_worker
+  become: yes
+  tasks:
+    - name: Start K3s agent service
       service:
         name: k3s-agent
         state: started
         enabled: yes
-      when: "'k9s_worker' in group_names"
-
-  handlers:
-    - name: Restart k3s
-      service:
-        name: k3s
-        state: restarted
